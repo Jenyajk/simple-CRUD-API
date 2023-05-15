@@ -1,4 +1,5 @@
-# CRUD_API
+# 
+simple-CRUD_API
 
 This is a CRUD API built with Node.js and TypeScript.
 
@@ -12,7 +13,8 @@ This is a CRUD API built with Node.js and TypeScript.
 Navigate to the project directory:
 
 ```shell
-cd CRUD_API
+cd 
+simple-CRUD_API
 ```
 Install the dependencies: 
 ```shell
