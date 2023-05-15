@@ -13,6 +13,12 @@ export default {
     },
     resolve: {
         extensions: ['.tsx', '.ts', '.js'],
+        fallback: {
+            fs: false,
+            path: require.resolve('path-browserify'),
+            os: require.resolve('os-browserify/browser'),
+            http: require.resolve('stream-http')
+        }
     },
     output: {
         filename: 'bundle.js',
