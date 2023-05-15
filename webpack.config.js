@@ -18,9 +18,4 @@ export default {
         filename: 'bundle.js',
         path: path.resolve(process.cwd(), 'dist'),
     },
-    devServer: {
-        static: path.join(path.dirname(new URL(import.meta.url).pathname), "dist"),
-        compress: true,
-        port: 4000,
-    },
 };
