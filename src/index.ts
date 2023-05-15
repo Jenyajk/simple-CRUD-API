@@ -2,35 +2,19 @@ import * as http from 'http';
 import * as dotenv from 'dotenv';
 import {v4 as uuid4, validate} from "uuid";
 import { IUser, IWorker } from "./interfaces";
+import * as os from "os";
 
 dotenv.config();
 
+let currentWorkerPort: number = parseInt(process.env.PORT, 10);
 
-const workers: Record<number, IWorker> = {
-    4000: { host: 'localhost', port: 4000 },
-    4001: { host: 'localhost', port: 4001 },
-    4002: { host: 'localhost', port: 4002 },
-    4003: { host: 'localhost', port: 4003 },
-    4004: { host: 'localhost', port: 4004 },
-};
+const numCPUs = os.cpus().length;
 
-let currentWorkerPort = 4000;
-
-function sendResponse(
-    res: http.ServerResponse,
-    statusCode: number,
-    data: any = null,
-    contentType = 'application/json'
-):void {
-    res.statusCode = statusCode;
-    res.setHeader('Content-Type', contentType);
-    if (data) {
-        res.write(JSON.stringify(data));
-    }
-    res.end();
+const workers: { [port: string]: { port: number; host: string } } = {};
+for (let i = 0; i < numCPUs; i++) {
+    const port = parseInt(process.env.PORT, 10) + i;
+    workers[port.toString()] = { host: 'localhost', port: port };
 }
-
-
 
 const users: IUser[] = [];
 
@@ -42,7 +26,7 @@ function jsonParse(body: string) {
     }
 }
 
-function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+export default function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
     const { method } = req;
 
     if (method === 'GET' && req.url === '/api/users') {
@@ -50,35 +34,60 @@ function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
     } else if (method === 'GET' && req.url?.startsWith('/api/users/')) {
         const id = req.url.split('/')[3];
         if (!id || !validate(id)) {
-            return sendResponse(res, 400, { error: `Неверный идентификатор пользователя ${id}` });
+            sendResponse(res, 400, { error: `Неверный идентификатор пользователя ${id}` });
+            return;
         }
         getUser(id, res);
-    } else if (method === 'POST' && req.url === '/api/users') {
-        addUser(req, res);
     } else if (method === 'PUT' && req.url?.startsWith('/api/users/')) {
         const id = req.url.split('/')[3];
         if (!id || !validate(id)) {
-            return sendResponse(res, 400, { error: 'Неверный идентификатор пользователя' });
+            sendResponse(res, 400, { error: 'Неверный идентификатор пользователя' });
+            return;
         }
         editUser(id, req, res);
+        return;
     } else if (method === 'DELETE' && req.url?.startsWith('/api/users/')) {
         const id = req.url.split('/')[3];
         if (!id || !validate(id)) {
-            return sendResponse(res, 400, { error: 'Неверный идентификатор пользователя' });
+            sendResponse(res, 400, { error: 'Неверный идентификатор пользователя' });
+            return;
         }
         deleteUser(id, res);
+        return;
+    } else if (method === 'POST' && req.url === '/api/users') {
+        addUser(req, res);
+        return;
     } else {
         const { port } = getNextWorker();
         const url = `http://localhost:${port}${req.url}`;
         proxyRequest(url, req, res);
+        return;
     }
+
     sendResponse(res, 404, { error: 'Endpoint not found' });
 }
+
 
 function getNextWorker(): IWorker {
     const worker = workers[currentWorkerPort];
     currentWorkerPort = currentWorkerPort === 4004 ? 4000 : currentWorkerPort + 1;
     return worker;
+}
+export  function sendResponse(
+    res: http.ServerResponse,
+    statusCode: number,
+    data: any = null,
+    contentType = 'application/json'
+): void {
+    if (res.headersSent) {
+        return;
+    }
+    res.statusCode = statusCode;
+    res.setHeader('Content-Type', contentType);
+    if (data) {
+        res.write(JSON.stringify(data));
+    }
+    res.end();
 }
 
 function proxyRequest(url: string, req: http.IncomingMessage, res: http.ServerResponse) {
