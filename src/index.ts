@@ -42,6 +42,75 @@ function jsonParse(body: string) {
     }
 }
 
+function handleRequest(req: http.IncomingMessage, res: http.ServerResponse) {
+    const { method } = req;
+
+    if (method === 'GET' && req.url === '/api/users') {
+        getUsers(req, res);
+    } else if (method === 'GET' && req.url?.startsWith('/api/users/')) {
+        const id = req.url.split('/')[3];
+        if (!id || !validate(id)) {
+            return sendResponse(res, 400, { error: `Неверный идентификатор пользователя ${id}` });
+        }
+        getUser(id, res);
+    } else if (method === 'POST' && req.url === '/api/users') {
+        addUser(req, res);
+    } else if (method === 'PUT' && req.url?.startsWith('/api/users/')) {
+        const id = req.url.split('/')[3];
+        if (!id || !validate(id)) {
+            return sendResponse(res, 400, { error: 'Неверный идентификатор пользователя' });
+        }
+        editUser(id, req, res);
+    } else if (method === 'DELETE' && req.url?.startsWith('/api/users/')) {
+        const id = req.url.split('/')[3];
+        if (!id || !validate(id)) {
+            return sendResponse(res, 400, { error: 'Неверный идентификатор пользователя' });
+        }
+        deleteUser(id, res);
+    } else {
+        const { port } = getNextWorker();
+        const url = `http://localhost:${port}${req.url}`;
+        proxyRequest(url, req, res);
+    }
+    sendResponse(res, 404, { error: 'Endpoint not found' });
+}
+
+function getNextWorker(): IWorker {
+    const worker = workers[currentWorkerPort];
+    currentWorkerPort = currentWorkerPort === 4004 ? 4000 : currentWorkerPort + 1;
+    return worker;
+}
+
+function proxyRequest(url: string, req: http.IncomingMessage, res: http.ServerResponse) {
+    const { port } = getNextWorker();
+    const options: http.RequestOptions = {
+        method: req.method,
+        headers: req.headers,
+        host: 'localhost',
+        port: port.toString(),
+        path: req.url,
+    };
+
+    const workerReq = http.request(url, options, (workerRes) => {
+        const chunks: Buffer[] = [];
+
+        workerRes.on('data', (chunk) => {
+            chunks.push(chunk);
+        });
+
+        workerRes.on('end', () => {
+            const data = Buffer.concat(chunks);
+            sendResponse(res, workerRes.statusCode || 500, data, workerRes.headers['content-type']);
+        });
+    });
+
+    workerReq.on('error', (error) => {
+        sendResponse(res, 500, { error: 'Internal server error' });
+    });
+
+    req.pipe(workerReq);
+}
+
  function getUsers(req: http.IncomingMessage, res: http.ServerResponse) {
     sendResponse(res, 200, users);
 }
@@ -129,6 +198,13 @@ function addUser(req: http.IncomingMessage, res: http.ServerResponse) {
     sendResponse(res, 200, deletedUser);
 }
 
+Object.values(workers).forEach((worker: IWorker) => {
+    const server = http.createServer(handleRequest);
+
+    server.listen(worker.port, () => {
+        console.log(`Server running on port ${worker.port}`);
+    });
+});
 
 
 
